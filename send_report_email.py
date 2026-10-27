@@ -1,12 +1,12 @@
 #!/usr/bin/env python3 """ send_report_email.py
-Leest het resource-overzicht (merged_resources_live.json) en stuurt een leesbaar HTML-rapport per e-mail via een gewone SMTP-server (Gmail, IBM Mail/Outlook, SendGrid, etc.) — GEEN IBM Cloud API-sleutel nodig.
+Leest het resource-overzicht (merged_resources_live.json) en stuurt een leesbaar HTML-rapport per e-mail via een gewone SMTP-server (Gmail, IBM Mail/Outlook, SendGrid, etc.) - GEEN IBM Cloud API-sleutel nodig.
 De HTML-opmaak volgt dezelfde IBM Carbon-huisstijl als het Power VS resource dashboard (donkere header, IBM-blauw #0f62fe, kaartjes met gekleurde linkerrand, Carbon-badges/chips).
-BELANGRIJK — VEILIGHEID: Alle instelbare waarden (SMTP-server, poort, afzender, ontvanger, gebruikersnaam, wachtwoord/app-wachtwoord) komen UITSLUITEND uit environment variables. Er staat GEEN enkel wachtwoord of e-mailadres hardcoded in dit bestand. """
+BELANGRIJK - VEILIGHEID: Alle instelbare waarden (SMTP-server, poort, afzender, ontvanger, gebruikersnaam, wachtwoord/app-wachtwoord) komen UITSLUITEND uit environment variables. Er staat GEEN enkel wachtwoord of e-mailadres hardcoded in dit bestand. """
 import json import os import smtplib import ssl import sys from collections import defaultdict from datetime import datetime from email.mime.multipart import MIMEMultipart from email.mime.text import MIMEText
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "") SMTP_PORT = int(os.environ.get("SMTP_PORT", "587")) SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "") SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "") SMTP_SENDER = os.environ.get("SMTP_SENDER", SMTP_USERNAME) REPORT_RECIPIENT = os.environ.get("REPORT_RECIPIENT", "") EMAIL_SUBJECT = os.environ.get( "EMAIL_SUBJECT", "Wekelijks IBM Power VS resource-rapport" )
 DEFAULT_JSON_PATH = os.path.join( os.path.dirname(os.path.abspath(__file__)), "merged_resources_live.json" ) REPORT_JSON_PATH = os.environ.get("REPORT_JSON_PATH", DEFAULT_JSON_PATH)
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"
----- IBM Carbon kleuren — exact gelijk aan het dashboard --------------------
+---- IBM Carbon kleuren - exact gelijk aan het dashboard --------------------
 IBM_BLUE = "#0f62fe" IBM_DARK = "#161616" IBM_GRAY_10 = "#f4f4f4" IBM_GRAY_20 = "#e0e0e0" IBM_GRAY_70 = "#525252" GREEN = "#198038" GREEN_BG = "#defbe6" RED = "#da1e28" RED_BG = "#fff1f1"
 WARNING_STATUSES = {"warning", "stopped", "failed", "error"}
 
@@ -27,7 +27,7 @@ def kpi_card(value, label, color=IBM_BLUE): return f""" <td style="width:25%; pa
 
 def build_html_report(by_env, total_resources, generated_at): total_manual = sum( data["by_source"].get("Manual (OpenShift Console / earlier export)", 0) for data in by_env.values() ) total_live = total_resources - total_manual total_warnings = sum(count_warnings(data) for data in by_env.values())
 # ---- Bovenaan: 4 grote kerncijfers in Carbon-kaartjes ---------------- summary_cards = f""" <table role="presentation" style="width:100%; border-collapse:separate; border-spacing:8px 0; margin:20px 0;"> <tr> {kpi_card(total_resources, "Totaal resources")} {kpi_card(len(by_env), "Omgevingen")} {kpi_card(total_warnings, "Aandachtspunten", RED if total_warnings else GREEN)} {kpi_card(f"{total_live} / {total_manual}", "Live&nbsp;/&nbsp;Handmatig", IBM_DARK)} </tr> </table> """
-# ---- Eén kaart per omgeving (Carbon chip- en badge-stijl) ------------ env_cards = [] for env in sorted_env_names(by_env): data = by_env[env] warnings = count_warnings(data) shown_types, rest_total, rest_count = top_types(data)
+# ---- Een kaart per omgeving (Carbon chip- en badge-stijl) ------------ env_cards = [] for env in sorted_env_names(by_env): data = by_env[env] warnings = count_warnings(data) shown_types, rest_total, rest_count = top_types(data)
 type_chips = "".join( f'<span style="display:inline-block;background:{IBM_GRAY_20};color:{IBM_GRAY_70};' f'border-radius:3px;padding:2px 8px;margin:2px;font-size:11px;">' f'{t}: {c}</span>' for t, c in shown_types ) if rest_count: type_chips += ( f'<span style="display:inline-block;background:{IBM_GRAY_20};color:{IBM_GRAY_70};' f'border-radius:3px;padding:2px 8px;margin:2px;font-size:11px;">' f'+{rest_count} andere types: {rest_total}</span>' )
 manual_n = data["by_source"].get("Manual (OpenShift Console / earlier export)", 0) live_n = data["total"] - manual_n
 if warnings: warning_badge = ( f'<span style="display:inline-block;background:{RED_BG};color:{RED};border-radius:10px;' f'padding:3px 10px;font-size:12px;font-weight:600;margin-left:8px;">' f'{warnings} aandachtspunt(en)</span>' ) else: warning_badge = ( f'<span style="display:inline-block;background:{GREEN_BG};color:{GREEN};border-radius:10px;' f'padding:3px 10px;font-size:12px;font-weight:600;margin-left:8px;">Alles gezond</span>' )
