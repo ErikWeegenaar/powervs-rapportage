@@ -24,8 +24,14 @@ import ssl
 import sys
 from collections import defaultdict
 from datetime import datetime
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
+try:
+    from build_dashboard_attachment import build_dashboard_html
+except Exception:
+    build_dashboard_html = None
 
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
@@ -257,7 +263,22 @@ def build_plaintext_report(by_env, total_resources, generated_at):
     return "\n".join(lines)
 
 
-def send_email(html_body, text_body):
+def build_attachment_html():
+    """Bouwt de volledige, doorklikbare dashboard-tool (tabbladen, filters,
+    CSV-export) om als bijlage mee te sturen. Geeft None terug als dit
+    niet lukt (dan valt het script terug op alleen de samenvatting in de
+    mail-body, zonder te crashen)."""
+    if build_dashboard_html is None:
+        print("WAARSCHUWING: build_dashboard_attachment.py niet gevonden - geen bijlage.")
+        return None
+    try:
+        return build_dashboard_html()
+    except Exception as exc:
+        print(f"WAARSCHUWING: kon dashboard-bijlage niet bouwen ({exc}) - mail gaat zonder bijlage.")
+        return None
+
+
+def send_email(html_body, text_body, attachment_html=None, attachment_filename="IBM_Power_VS_dashboard.html"):
     missing = [
         name for name, val in [
             ("SMTP_SERVER", SMTP_SERVER),
@@ -277,6 +298,13 @@ def send_email(html_body, text_body):
     msg.attach(MIMEText(text_body, "plain", "utf-8"))
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    if attachment_html:
+        part = MIMEApplication(attachment_html.encode("utf-8"), _subtype="html")
+        part.add_header(
+            "Content-Disposition", "attachment", filename=attachment_filename
+        )
+        msg.attach(part)
+
     context = ssl.create_default_context()
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls(context=context)
@@ -293,8 +321,11 @@ def main():
 
     html_body = build_html_report(by_env, len(resources), generated_at)
     text_body = build_plaintext_report(by_env, len(resources), generated_at)
+    attachment_html = build_attachment_html()
 
     print(f"Rapport opgebouwd: {len(resources)} resources in {len(by_env)} omgevingen.")
+    if attachment_html:
+        print(f"Interactieve dashboard-bijlage opgebouwd: {len(attachment_html)} bytes.")
 
     if DRY_RUN:
         preview_path = os.path.join(
@@ -306,9 +337,17 @@ def main():
         print(f"Een voorbeeld van het rapport is opgeslagen als: {preview_path}")
         print("\n--- Platte-tekst voorbeeld ---")
         print(text_body)
+        if attachment_html:
+            attach_preview_path = os.path.join(
+                os.path.dirname(os.path.abspath(REPORT_JSON_PATH)) or ".",
+                "dashboard_attachment_preview.html",
+            )
+            with open(attach_preview_path, "w", encoding="utf-8") as f:
+                f.write(attachment_html)
+            print(f"Voorbeeld van de dashboard-bijlage opgeslagen als: {attach_preview_path}")
         return
 
-    send_email(html_body, text_body)
+    send_email(html_body, text_body, attachment_html=attachment_html)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,422 @@
+<script>
+/* DATA_PLACEHOLDER */
+
+// ---------- Helpers ----------
+function statusBadgeClass(status) {
+  if (!status) return 'badge-neutral';
+  const s = status.toLowerCase();
+  if (['active','running','deployed','healthy','ready'].includes(s)) return 'badge-active';
+  if (['warning'].includes(s)) return 'badge-warning';
+  if (['stopped','error','failed','stale','inactive'].includes(s)) return 'badge-error';
+  return 'badge-neutral';
+}
+function badge(status) {
+  if (!status) return '<span class="badge badge-neutral">—</span>';
+  return `<span class="badge ${statusBadgeClass(status)}">${escapeHtml(status)}</span>`;
+}
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function uniqueSorted(arr) {
+  return Array.from(new Set(arr.filter(v => v !== '' && v !== null && v !== undefined))).sort();
+}
+
+// ---------- KPI cards ----------
+function renderKPIs() {
+  const total = RESOURCES.length;
+  const warningCount = RESOURCES.filter(r => (r.PowerStatus||'').toLowerCase() === 'warning').length;
+  const linkedToPower = RESOURCES.filter(r => r.PowerVSWorkspace).length;
+  const linkedToOCP = RESOURCES.filter(r => r.OCPVersion).length;
+  const manualCount = RESOURCES.filter(r => r.DataSource === 'Manual (OpenShift Console / earlier export)').length;
+
+  const cards = [
+    {label:'Total active resources', value: total, cls:''},
+    {label:'Linked to Power VS workspace', value: linkedToPower, cls:''},
+    {label:'Linked to OpenShift cluster', value: linkedToOCP, cls:''},
+    {label:'Resources with Warning status', value: warningCount, cls: warningCount ? 'warn' : ''},
+    {label:'OpenShift clusters', value: OCP_CLUSTERS.length, cls:''},
+    {label:'FRA05 physical hosts tracked', value: new Set(LPAR_SERVERS.map(l=>l['Host Name'])).size, cls:''},
+    {label:'From earlier export (not live-verified)', value: manualCount, cls: manualCount ? 'warn' : ''},
+  ];
+  document.getElementById('kpiRow').innerHTML = cards.map(c => `
+    <div class="kpi-card ${c.cls}">
+      <div class="kpi-value">${c.value}</div>
+      <div class="kpi-label">${c.label}</div>
+    </div>`).join('');
+}
+
+
+// ---------- Resource table ----------
+let currentSort = { key: 'Category', dir: 1 };
+let expandedRows = new Set();
+
+function populateFilterOptions() {
+  const catSel = document.getElementById('filterCategory');
+  uniqueSorted(RESOURCES.map(r=>r.Category)).forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o);
+  });
+  const envSel = document.getElementById('filterEnv');
+  const envs = uniqueSorted(RESOURCES.map(r=>r.Environment).filter(c => c && c !== 'Unclassified'));
+  envs.forEach(e => {
+    const o = document.createElement('option'); o.value = e; o.textContent = e; envSel.appendChild(o);
+  });
+  const stSel = document.getElementById('filterStatus');
+  uniqueSorted(RESOURCES.map(r=>r.Status)).forEach(s => {
+    const o = document.createElement('option'); o.value = s; o.textContent = s; stSel.appendChild(o);
+  });
+}
+
+function getFilteredResources() {
+  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  const cat = document.getElementById('filterCategory').value;
+  const env = document.getElementById('filterEnv').value;
+  const status = document.getElementById('filterStatus').value;
+  const source = document.getElementById('filterSource').value;
+  return RESOURCES.filter(r => {
+    if (cat && r.Category !== cat) return false;
+    if (env && r.Environment !== env) return false;
+    if (status && r.Status !== status) return false;
+    if (source && r.DataSource !== source) return false;
+    if (q) {
+      const hay = [r.Name, r.Group, r.Product, r.Type, r.Environment, r.Cluster, r.PowerVSWorkspace, r.HostName, r.IP, r.OS].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function sortResources(arr) {
+  const { key, dir } = currentSort;
+  return arr.slice().sort((a,b) => {
+    const av = (a[key]||'').toString().toLowerCase();
+    const bv = (b[key]||'').toString().toLowerCase();
+    if (av < bv) return -1*dir;
+    if (av > bv) return 1*dir;
+    return 0;
+  });
+}
+
+function hasDetails(r) {
+  return r.HostName || r.OCPVersion || r.PowerVSWorkspace || r.VCPU || r.VolumeSize || r.VolumePool || r.SubnetType || r.VLAN;
+}
+
+function renderDetailRow(r) {
+  const items = [];
+  if (r.PowerVSWorkspace) items.push(['Power VS Workspace', r.PowerVSWorkspace]);
+  if (r.Group) items.push(['Resource Group / ID', r.Group]);
+  if (r.VolumeSize) items.push(['Volume Size', r.VolumeSize]);
+  if (r.VolumeTier) items.push(['Volume Tier', r.VolumeTier]);
+  if (r.VolumePool) items.push(['Storage Pool', r.VolumePool]);
+  if (r.IsBootVolume) items.push(['Boot Volume', r.IsBootVolume]);
+  if (r.SubnetType) items.push(['Subnet Type', r.SubnetType]);
+  if (r.VLAN) items.push(['VLAN ID', r.VLAN]);
+  if (r.IPRange) items.push(['IP Range', r.IPRange]);
+  if (r.HostName) items.push(['Physical Host', r.HostName]);
+  if (r.HostIP) items.push(['Host IP', r.HostIP]);
+  if (r.VCPU) items.push(['vCPU', r.VCPU]);
+  if (r.ProcUnits) items.push(['Proc Units', r.ProcUnits]);
+  if (r.MemoryMB) items.push(['Memory (MB)', r.MemoryMB]);
+  if (r.RMC) items.push(['RMC Status', r.RMC]);
+  if (r.LPARState) items.push(['LPAR State', r.LPARState]);
+  if (r.OCPVersion) items.push(['OpenShift Version', r.OCPVersion]);
+  if (r.OCPClusterStatus) items.push(['OpenShift Cluster Status', r.OCPClusterStatus]);
+  if (r.OCPControlPlane) items.push(['OCP Control Plane Nodes', r.OCPControlPlane]);
+  if (r.OCPCompute) items.push(['OCP Compute Nodes', r.OCPCompute]);
+  if (r.OCPRemarks) items.push(['OCP Remarks', r.OCPRemarks]);
+  if (r.Tags) items.push(['Tags', r.Tags]);
+  if (!items.length) return '<div class="empty-state" style="padding:10px;">No additional details available for this resource.</div>';
+  return '<div class="detail-grid">' + items.map(([k,v]) => `
+    <div class="detail-item"><div class="d-label">${escapeHtml(k)}</div><div class="d-value">${escapeHtml(v)}</div></div>`).join('') + '</div>';
+}
+
+function renderResourceTable() {
+  const filtered = sortResources(getFilteredResources());
+  const tbody = document.getElementById('resourceTableBody');
+  document.getElementById('resultCount').textContent = `${filtered.length} of ${RESOURCES.length} resources`;
+  document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
+
+  let html = '';
+  filtered.forEach((r, idx) => {
+    const expandable = hasDetails(r);
+    const isOpen = expandedRows.has(r.Name + '|' + idx);
+    const effStatus = r.PowerStatus && r.PowerStatus !== '-' ? r.PowerStatus : r.Status;
+    html += `<tr class="${expandable ? 'expandable' : ''}" data-rowkey="${r.Name}|${idx}">
+      <td>${expandable ? `<span class="expand-icon ${isOpen?'open':''}">▶</span>` : ''}</td>
+      <td>${badge(effStatus)}</td>
+      <td title="${escapeHtml(r.Name)}"><strong>${escapeHtml(r.Name)}</strong></td>
+      <td title="${escapeHtml(r.Environment)}">${r.Environment && r.Environment !== 'Unclassified' ? `<span class="chip">${escapeHtml(r.Environment)}</span>` : ''}</td>
+      <td title="${escapeHtml(r.IP)}">${escapeHtml(r.IP)}</td>
+      <td title="${escapeHtml(r.OS)}">${escapeHtml(r.OS)}</td>
+      <td>${escapeHtml(r.Cores)}</td>
+      <td>${escapeHtml(r.Memory)}</td>
+      <td title="${escapeHtml(r.Category)}">${escapeHtml(r.Category)}</td>
+      <td title="${escapeHtml(r.Type)}">${escapeHtml(r.Type)}</td>
+      <td title="${escapeHtml(r.Location)}">${escapeHtml(r.Location)}</td>
+      <td title="${escapeHtml(r.Product)}">${escapeHtml(r.Product)}</td>
+      <td>${r.DataSource === 'Manual (OpenShift Console / earlier export)' ? '<span class="badge badge-warning" title="Carried over from the earlier OpenShift Console / Excel export \u2014 not confirmed against the live IBM Cloud API">Manual</span>' : '<span class="badge badge-active" title="Confirmed live from the IBM Cloud API">Live</span>'}</td>
+    </tr>`;
+    if (isOpen) {
+      html += `<tr class="detail-row"><td colspan="13">${renderDetailRow(r)}</td></tr>`;
+    }
+  });
+  tbody.innerHTML = html;
+
+  tbody.querySelectorAll('tr.expandable').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const key = tr.getAttribute('data-rowkey');
+      if (expandedRows.has(key)) expandedRows.delete(key); else expandedRows.add(key);
+      renderResourceTable();
+    });
+  });
+}
+
+function setupSortHeaders() {
+  document.querySelectorAll('#resourceTable thead th[data-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if (currentSort.key === key) currentSort.dir *= -1;
+      else { currentSort.key = key; currentSort.dir = 1; }
+      document.querySelectorAll('#resourceTable thead th .sort-arrow').forEach(s => s.textContent='');
+      th.querySelector('.sort-arrow').textContent = currentSort.dir === 1 ? '▲' : '▼';
+      renderResourceTable();
+    });
+  });
+}
+
+
+// ---------- Action Needed tab ----------
+function renderActionSummary() {
+  const s = ACTIONS.summary;
+  const roleEntries = Object.entries(s.byRole).sort((a,b)=>b[1]-a[1]);
+  const cards = [
+    {label: 'Total servers with Warning status', value: s.totalWarnings},
+    ...roleEntries.map(([role, count]) => ({label: role + ' nodes with Warning', value: count})),
+  ];
+  document.getElementById('actionSummaryRow').innerHTML = cards.map(c => `
+    <div class="kpi-card warn"><div class="kpi-value">${c.value}</div><div class="kpi-label">${escapeHtml(c.label)}</div></div>
+  `).join('');
+}
+
+function renderActionTable() {
+  const q = document.getElementById('actionSearch').value.trim().toLowerCase();
+  const role = document.getElementById('actionRoleFilter').value;
+  const filtered = ACTIONS.warningServers.filter(w => {
+    if (role && w.Role !== role) return false;
+    if (q) {
+      const hay = [w.Name, w.PowerVSWorkspace].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  document.getElementById('warnCount').textContent = ACTIONS.warningServers.length;
+  document.getElementById('actionResultCount').textContent = `${filtered.length} of ${ACTIONS.warningServers.length} servers`;
+  document.getElementById('actionTableBody').innerHTML = filtered.map(w => `
+    <tr>
+      <td><strong>${escapeHtml(w.Name)}</strong></td>
+      <td>${w.Role !== 'Other' ? `<span class="chip">${escapeHtml(w.Role)}</span>` : escapeHtml(w.Role)}</td>
+      <td><span class="chip">${escapeHtml(w.PowerVSWorkspace)}</span></td>
+      <td>${escapeHtml(w.IP)}</td>
+      <td>${escapeHtml(w.OS)}</td>
+      <td>${escapeHtml(w.Cores)}</td>
+      <td>${escapeHtml(w.Memory)}</td>
+      <td>${badge(w.PowerStatus)}</td>
+    </tr>`).join('');
+}
+
+function renderEmptyEnvTable() {
+  document.getElementById('emptyEnvTableBody').innerHTML = ACTIONS.nearEmptyEnvironments.map(e => `
+    <tr>
+      <td><span class="chip">${escapeHtml(e.Environment)}</span></td>
+      <td>${e.TotalResources}</td>
+      <td>${e.ServerCount}</td>
+      <td style="color:#525252;">${escapeHtml(e.Reason)}</td>
+    </tr>`).join('');
+}
+
+// ---------- OCP tab ----------
+function ocpStatusClass(s) {
+  const l = (s||'').toLowerCase();
+  if (l === 'ready') return 'badge-active';
+  if (l === 'stale') return 'badge-stale';
+  return 'badge-neutral';
+}
+function renderOCPCards() {
+  const grid = document.getElementById('ocpCardGrid');
+  grid.innerHTML = OCP_CLUSTERS.map(c => `
+    <div class="ocp-card">
+      <h3>${escapeHtml(c.Name)} <span class="badge ${ocpStatusClass(c.Status)}" style="float:right;">${escapeHtml(c.Status)}</span></h3>
+      <div class="ocp-meta">Version ${escapeHtml(c.OCPVersion)} · Created ${escapeHtml(c.CreatedAt)}${c.Remarks ? ' · ' + escapeHtml(c.Remarks) : ''}</div>
+      <div class="ocp-stats">
+        <div><div class="ocp-stat-val">${c.ControlPlaneCount}</div><div class="ocp-stat-label">Control plane</div></div>
+        <div><div class="ocp-stat-val">${c.ComputeCount}</div><div class="ocp-stat-label">Compute nodes</div></div>
+      </div>
+    </div>`).join('');
+}
+
+// ---------- LPAR tab ----------
+function renderLPARTable() {
+  const q = document.getElementById('lparSearch').value.trim().toLowerCase();
+  const rmc = document.getElementById('lparRmcFilter').value;
+  const filtered = LPAR_SERVERS.filter(l => {
+    if (rmc && l.RMC !== rmc) return false;
+    if (q) {
+      const hay = [l['VM Name'], l['Host Name'], l['Environment??']].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  document.getElementById('lparResultCount').textContent = `${filtered.length} of ${LPAR_SERVERS.length} VMs`;
+  document.getElementById('lparTableBody').innerHTML = filtered.map(l => `
+    <tr>
+      <td>${escapeHtml(l['Host Name'])}</td>
+      <td><strong>${escapeHtml(l['VM Name'])}</strong></td>
+      <td>${l['Environment??'] ? `<span class="chip">${escapeHtml(l['Environment??'])}</span>` : ''}</td>
+      <td>${escapeHtml(l['VCPU'])}</td>
+      <td>${escapeHtml(l['PROC Units'])}</td>
+      <td>${escapeHtml(l['Memory'])}</td>
+      <td>${badge(l['LPAR State'])}</td>
+      <td><span class="badge ${l['RMC']==='active' ? 'badge-active' : 'badge-error'}">${escapeHtml(l['RMC'])}</span></td>
+    </tr>`).join('');
+}
+
+// ---------- CSV export ----------
+function toCSVValue(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  if (/[",\n;]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function downloadCSV(filename, columns, rows) {
+  const header = columns.map(c => toCSVValue(c.label)).join(',');
+  const lines = rows.map(r => columns.map(c => toCSVValue(typeof c.value === 'function' ? c.value(r) : r[c.value])).join(','));
+  const csv = [header, ...lines].join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportResourcesCSV() {
+  const rows = sortResources(getFilteredResources());
+  const cols = [
+    {label:'Status', value: r => (r.PowerStatus && r.PowerStatus !== '-') ? r.PowerStatus : r.Status},
+    {label:'Name', value:'Name'},
+    {label:'Environment', value:'Environment'},
+    {label:'IP Address', value:'IP'},
+    {label:'OS', value:'OS'},
+    {label:'Cores', value:'Cores'},
+    {label:'Memory', value:'Memory'},
+    {label:'Category', value:'Category'},
+    {label:'Type', value:'Type'},
+    {label:'Location', value:'Location'},
+    {label:'Product', value:'Product'},
+    {label:'Group', value:'Group'},
+    {label:'Power VS Workspace', value:'PowerVSWorkspace'},
+    {label:'OpenShift Version', value:'OCPVersion'},
+    {label:'OpenShift Cluster Status', value:'OCPClusterStatus'},
+    {label:'Data Source', value:'DataSource'},
+  ];
+  downloadCSV('ibm_cloud_all_resources.csv', cols, rows);
+}
+
+function exportWarningsCSV() {
+  const search = document.getElementById('actionSearch').value.toLowerCase();
+  const role = document.getElementById('actionRoleFilter').value;
+  let rows = ACTIONS.warningServers;
+  if (role) rows = rows.filter(r => r.Role === role);
+  if (search) rows = rows.filter(r => JSON.stringify(r).toLowerCase().includes(search));
+  const cols = [
+    {label:'Name', value:'Name'}, {label:'Role', value:'Role'},
+    {label:'Environment', value:'PowerVSWorkspace'}, {label:'IP Address', value:'IP'},
+    {label:'OS', value:'OS'}, {label:'Cores', value:'Cores'}, {label:'Memory', value:'Memory'},
+    {label:'Status', value:'PowerStatus'},
+  ];
+  downloadCSV('ibm_cloud_warning_servers.csv', cols, rows);
+}
+
+function exportNearEmptyCSV() {
+  const cols = [
+    {label:'Environment', value:'Environment'}, {label:'Total Resources', value:'TotalResources'},
+    {label:'Server Count', value:'ServerCount'}, {label:'Reason', value:'Reason'},
+  ];
+  downloadCSV('ibm_cloud_near_empty_environments.csv', cols, ACTIONS.nearEmptyEnvironments);
+}
+
+function exportOCPCSV() {
+  const cols = [
+    {label:'Name', value:'Name'}, {label:'Cluster ID', value:'ClusterID'}, {label:'OCP Version', value:'OCPVersion'},
+    {label:'Created At', value:'CreatedAt'}, {label:'Control Plane Count', value:'ControlPlaneCount'},
+    {label:'Compute Count', value:'ComputeCount'}, {label:'Status', value:'Status'}, {label:'Remarks', value:'Remarks'},
+  ];
+  downloadCSV('ibm_cloud_openshift_clusters.csv', cols, OCP_CLUSTERS);
+}
+
+function exportLPARCSV() {
+  const search = document.getElementById('lparSearch').value.toLowerCase();
+  const rmc = document.getElementById('lparRmcFilter').value;
+  let rows = LPAR_SERVERS;
+  if (rmc) rows = rows.filter(l => (l['RMC']||'').toLowerCase() === rmc);
+  if (search) rows = rows.filter(l => JSON.stringify(l).toLowerCase().includes(search));
+  const cols = [
+    {label:'Host Name', value:'Host Name'}, {label:'Host IP', value:'Host IP'}, {label:'VM Name', value:'VM Name'},
+    {label:'VM ID', value:'VM ID'}, {label:'PROC Units', value:'PROC Units'}, {label:'Memory', value:'Memory'},
+    {label:'LPAR State', value:'LPAR State'}, {label:'RMC', value:'RMC'},
+  ];
+  downloadCSV('ibm_cloud_physical_hosts_lpar.csv', cols, rows);
+}
+
+// ---------- Tabs ----------
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    });
+  });
+}
+
+// ---------- Init ----------
+function init() {
+  renderKPIs();
+  populateFilterOptions();
+  setupSortHeaders();
+  setupTabs();
+  renderResourceTable();
+  renderActionSummary();
+  renderActionTable();
+  renderEmptyEnvTable();
+  renderOCPCards();
+  renderLPARTable();
+
+  ['searchBox','filterCategory','filterEnv','filterStatus','filterSource'].forEach(id => {
+    document.getElementById(id).addEventListener('input', renderResourceTable);
+    document.getElementById(id).addEventListener('change', renderResourceTable);
+  });
+  document.getElementById('resetFilters').addEventListener('click', () => {
+    document.getElementById('searchBox').value='';
+    document.getElementById('filterCategory').value='';
+    document.getElementById('filterEnv').value='';
+    document.getElementById('filterStatus').value='';
+    document.getElementById('filterSource').value='';
+    renderResourceTable();
+  });
+  document.getElementById('actionSearch').addEventListener('input', renderActionTable);
+  document.getElementById('actionRoleFilter').addEventListener('change', renderActionTable);
+  document.getElementById('lparSearch').addEventListener('input', renderLPARTable);
+  document.getElementById('lparRmcFilter').addEventListener('change', renderLPARTable);
+
+  document.getElementById('exportResources').addEventListener('click', exportResourcesCSV);
+  document.getElementById('exportWarnings').addEventListener('click', exportWarningsCSV);
+  document.getElementById('exportNearEmpty').addEventListener('click', exportNearEmptyCSV);
+  document.getElementById('exportOCP').addEventListener('click', exportOCPCSV);
+  document.getElementById('exportLPAR').addEventListener('click', exportLPARCSV);
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

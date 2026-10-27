@@ -1,0 +1,181 @@
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="resources">All Resources</button>
+    <button class="tab-btn" data-tab="action">Action Needed</button>
+    <button class="tab-btn" data-tab="ocp">OpenShift Clusters</button>
+    <button class="tab-btn" data-tab="lpar">Physical Hosts (LPAR)</button>
+    <button class="tab-btn" data-tab="howto">How to use this tool</button>
+    <button class="tab-btn" data-tab="about">About this data</button>
+  </div>
+
+  <div class="tab-content active" id="tab-resources">
+    <div class="toolbar">
+      <input type="text" id="searchBox" placeholder="Search by name, group, product, tags, IP...">
+      <select id="filterCategory"><option value="">All categories</option></select>
+      <select id="filterEnv"><option value="">All environments / clusters</option></select>
+      <select id="filterStatus"><option value="">All statuses</option></select>
+      <select id="filterSource"><option value="">All data sources</option><option value="Live (IBM Cloud API)">Live (IBM Cloud API)</option><option value="Manual (OpenShift Console / earlier export)">Manual (OpenShift Console / earlier export)</option></select>
+      <button class="btn secondary" id="resetFilters">Reset filters</button>
+      <button class="btn export" id="exportResources">⬇ Export CSV</button>
+      <span class="result-count" id="resultCount"></span>
+    </div>
+    <div style="overflow-x:auto;">
+    <table id="resourceTable">
+      <thead>
+        <tr>
+          <th class="col-expand"></th>
+          <th class="col-status" data-key="Status">Status<span class="sort-arrow"></span></th>
+          <th class="col-name" data-key="Name">Name<span class="sort-arrow"></span></th>
+          <th class="col-env" data-key="Environment">Environment<span class="sort-arrow"></span></th>
+          <th class="col-ip" data-key="IP">IP Address<span class="sort-arrow"></span></th>
+          <th class="col-os" data-key="OS">OS<span class="sort-arrow"></span></th>
+          <th class="col-cores" data-key="Cores">Cores<span class="sort-arrow"></span></th>
+          <th class="col-mem" data-key="Memory">Memory<span class="sort-arrow"></span></th>
+          <th class="col-cat" data-key="Category">Category<span class="sort-arrow"></span></th>
+          <th class="col-type" data-key="Type">Type<span class="sort-arrow"></span></th>
+          <th class="col-loc" data-key="Location">Location<span class="sort-arrow"></span></th>
+          <th class="col-prod" data-key="Product">Product<span class="sort-arrow"></span></th>
+          <th class="col-source" data-key="DataSource">Source<span class="sort-arrow"></span></th>
+        </tr>
+      </thead>
+      <tbody id="resourceTableBody"></tbody>
+    </table>
+    </div>
+    <div class="empty-state" id="emptyState" style="display:none;">No resources match the current filters.</div>
+  </div>
+
+  <div class="tab-content" id="tab-action">
+    <div class="section-title">Action Needed — Warning statuses &amp; underused environments</div>
+    <p style="color:#525252; margin-top:-8px;">This tab highlights servers currently reporting a <strong>Warning</strong> status in Power Virtual Server, plus Power VS workspaces that currently host no active servers. Use this as a starting point for environment clean-up and health checks.</p>
+
+    <div class="action-summary-row" id="actionSummaryRow"></div>
+
+    <div class="section-subtitle">Servers with Warning status (<span id="warnCount"></span>)</div>
+    <div class="toolbar">
+      <input type="text" id="actionSearch" placeholder="Search by name or environment...">
+      <select id="actionRoleFilter">
+        <option value="">All roles</option>
+        <option value="Master">Master</option>
+        <option value="Worker">Worker</option>
+        <option value="Bastion">Bastion</option>
+        <option value="Other">Other</option>
+      </select>
+      <button class="btn export" id="exportWarnings">⬇ Export CSV</button>
+      <span class="result-count" id="actionResultCount"></span>
+    </div>
+    <div style="overflow-x:auto;">
+    <table id="actionTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Environment</th>
+          <th>IP Address</th>
+          <th>OS</th>
+          <th>Cores</th>
+          <th>Memory</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="actionTableBody"></tbody>
+    </table>
+    </div>
+
+    <div class="section-subtitle" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>Near-empty environments</span>
+      <button class="btn export" id="exportNearEmpty">⬇ Export CSV</button>
+    </div>
+    <div style="overflow-x:auto;">
+    <table id="emptyEnvTable">
+      <thead>
+        <tr>
+          <th>Environment</th>
+          <th>Total resources</th>
+          <th>Active servers</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody id="emptyEnvTableBody"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-ocp">
+    <div class="section-title" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>Red Hat OpenShift Clusters (6)</span>
+      <button class="btn export" id="exportOCP">⬇ Export CSV</button>
+    </div>
+    <div class="card-grid" id="ocpCardGrid"></div>
+  </div>
+
+  <div class="tab-content" id="tab-lpar">
+    <div class="section-title">FRA05 — Physical Host to Virtual Machine Mapping (42 VMs)</div>
+    <div class="toolbar">
+      <input type="text" id="lparSearch" placeholder="Search by VM name, host, or environment...">
+      <select id="lparRmcFilter">
+        <option value="">All RMC statuses</option>
+        <option value="active">RMC: active</option>
+        <option value="inactive">RMC: inactive</option>
+      </select>
+      <button class="btn export" id="exportLPAR">⬇ Export CSV</button>
+      <span class="result-count" id="lparResultCount"></span>
+    </div>
+    <div style="overflow-x:auto;">
+    <table id="lparTable">
+      <thead>
+        <tr>
+          <th data-key="Host Name">Physical Host</th>
+          <th data-key="VM Name">VM Name</th>
+          <th data-key="Environment??">Environment</th>
+          <th data-key="VCPU">vCPU</th>
+          <th data-key="PROC Units">Proc Units</th>
+          <th data-key="Memory">Memory (MB)</th>
+          <th data-key="LPAR State">LPAR State</th>
+          <th data-key="RMC">RMC Status</th>
+        </tr>
+      </thead>
+      <tbody id="lparTableBody"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-content" id="tab-howto">
+    <div class="section-title">How to use this tool</div>
+    <p>This is a self-contained HTML file — no installation, login, or internet connection required. Open it in any browser (Chrome, Edge, Firefox). Nothing you do here changes anything in the live IBM Cloud account.</p>
+
+    <div class="section-subtitle">1. Find what you're looking for</div>
+    <ul style="line-height:1.8;">
+      <li><strong>Search box</strong> — type any part of a name, group, product, tag, or IP address. Results update as you type.</li>
+      <li><strong>Dropdown filters</strong> — narrow results by category, environment/cluster, or status. Combine multiple filters at once; click <strong>Reset filters</strong> to start over.</li>
+      <li><strong>Column sorting</strong> — click any column header to sort by that column; click again to reverse the order.</li>
+      <li><strong>Row details</strong> — rows with a ▶ arrow can be clicked to expand and show extra details (Power VS workspace, OpenShift metadata, resource group, tags).</li>
+    </ul>
+
+    <div class="section-subtitle">2. Jump straight to what needs attention</div>
+    <p>Open the <strong>Action Needed</strong> tab for a ready-made shortlist: servers currently in a Warning state, and Power VS workspaces with no active servers. This is the fastest way to start a health check without scrolling through all 488 resources.</p>
+
+    <div class="section-subtitle">3. Export data to Excel / Google Sheets</div>
+    <p>Every tab has an <strong>⬇ Export CSV</strong> button. It exports exactly what is currently visible — i.e. your active search and filters are respected. Opening the downloaded <code>.csv</code> file in Excel or Google Sheets lets you pivot, chart, or share the data further.</p>
+
+    <div class="section-subtitle">4. Sharing this tool with others</div>
+    <p>Because it's a single HTML file, you can send it by email, Teams, or upload it to a shared drive (e.g. Box). Anyone who opens it sees the exact same data — there is no live connection back to IBM Cloud, so updates made in IBM Cloud after this snapshot was taken will not appear automatically. See the note below on keeping this up to date.</p>
+
+    <div class="section-subtitle">Keeping this dashboard up to date</div>
+    <p>This file is a <strong>snapshot</strong> taken on the date shown in the header. It does not refresh itself. For a live, continuously-updated version of this dashboard, see the options discussed separately — in short, that would involve a small scheduled script that re-collects the IBM Cloud / Power VS / OpenShift / FRA05 data automatically (e.g. once per night) and republishes an updated version of this dashboard, optionally hosted somewhere the whole team can reach (such as an internal web page or a Box-hosted page).</p>
+  </div>
+
+  <div class="tab-content" id="tab-about">
+    <div class="section-title">About this data</div>
+    <p>This tool combines four data sources collected from IBM Cloud and Red Hat OpenShift on October 23, 2026, for account <strong>2330274 — GBS c/o Schiphol</strong>:</p>
+    <ol style="line-height:1.8;">
+      <li><strong>IBM Cloud Resource List</strong> (cloud.ibm.com/resources) — 488 active resources across 8 categories (Storage, Compute, Networking, Containers, Developer tools, AI/Machine Learning, Observability, Security).</li>
+      <li><strong>Power Virtual Server Workspace Details</strong> (cloud.ibm.com/power/workspaces) — detailed inventory of 278 resources (servers, storage volumes, subnets, boot images) across 6 workspaces in eu-de-1 and eu-de-2, fully linked to the main resource list (251 by direct name match, 27 resolved via internal resource IDs). Server, volume, subnet, and image details (IP, OS, cores, memory, size, tier, pool, VLAN) are parsed into their own columns, available directly in the "All Resources" table and in each row's expanded detail view.</li>
+      <li><strong>Red Hat OpenShift Console data</strong> — cluster health, version, and control-plane/compute node counts for 6 OpenShift clusters running on top of the Power infrastructure.</li>
+      <li><strong>FRA05 LPAR &amp; Server inventory</strong> — physical host to virtual machine mapping for 42 VMs, including CPU/memory allocation and RMC (Resource Monitoring and Control) agent status.</li>
+    </ol>
+    <p>Use the <strong>All Resources</strong> tab to browse, search and filter every resource, with IP/OS/Cores/Memory shown directly as columns. Click a row to expand it for extra details (host, OpenShift metadata, tags). Use the <strong>Action Needed</strong> tab for a consolidated view of Warning-status servers and underused environments. Use the <strong>OpenShift Clusters</strong> and <strong>Physical Hosts</strong> tabs for infrastructure-level views.</p>
+  </div>
+
+  <footer>Generated for environment management purposes · IBM Cloud account 2330274 (GBS c/o Schiphol) · Not an official IBM report</footer>
+</div>

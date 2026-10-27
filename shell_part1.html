@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IBM Power Systems — Environment Management Tool</title>
+<style>
+  :root {
+    --ibm-blue: #0f62fe;
+    --ibm-dark: #161616;
+    --ibm-gray-10: #f4f4f4;
+    --ibm-gray-20: #e0e0e0;
+    --ibm-gray-30: #c6c6c6;
+    --ibm-gray-60: #6f6f6f;
+    --ibm-gray-70: #525252;
+    --green: #198038;
+    --green-bg: #defbe6;
+    --red: #da1e28;
+    --red-bg: #fff1f1;
+    --yellow: #b28600;
+    --yellow-bg: #fcf4d6;
+    --blue-bg: #edf5ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    margin: 0;
+    background: var(--ibm-gray-10);
+    color: var(--ibm-dark);
+    font-size: 14px;
+  }
+  header {
+    background: var(--ibm-dark);
+    color: white;
+    padding: 20px 28px;
+  }
+  header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
+  header .subtitle { color: #c6c6c6; font-size: 13px; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px 28px 60px; }
+
+  .kpi-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .kpi-card {
+    background: white; border-radius: 4px; padding: 16px 20px; flex: 1; min-width: 160px;
+    border-left: 4px solid var(--ibm-blue); cursor: default;
+  }
+  .kpi-card .kpi-value { font-size: 28px; font-weight: 600; line-height: 1.1; }
+  .kpi-card .kpi-label { font-size: 12px; color: var(--ibm-gray-70); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }
+  .kpi-card.warn { border-left-color: var(--yellow); }
+  .kpi-card.warn .kpi-value { color: var(--yellow); }
+  .kpi-card.ok .kpi-value { color: var(--green); }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 0; border-bottom: 2px solid var(--ibm-gray-20); }
+  .tab-btn {
+    padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 14px;
+    font-weight: 500; color: var(--ibm-gray-70); border-bottom: 3px solid transparent; margin-bottom: -2px;
+  }
+  .tab-btn.active { color: var(--ibm-blue); border-bottom-color: var(--ibm-blue); }
+  .tab-btn:hover { color: var(--ibm-dark); }
+
+  .tab-content { display: none; background: white; padding: 20px; border-radius: 0 0 4px 4px; }
+  .tab-content.active { display: block; }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .toolbar input[type="text"] {
+    padding: 8px 12px; border: 1px solid var(--ibm-gray-30); border-radius: 2px; font-size: 14px;
+    min-width: 240px; flex: 1;
+  }
+  .toolbar select {
+    padding: 8px 10px; border: 1px solid var(--ibm-gray-30); border-radius: 2px; font-size: 14px;
+    background: white; min-width: 160px;
+  }
+  .toolbar .result-count { font-size: 13px; color: var(--ibm-gray-70); margin-left: auto; white-space: nowrap; }
+  .btn {
+    padding: 8px 14px; background: var(--ibm-blue); color: white; border: none; border-radius: 2px;
+    cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  .btn:hover { background: #0353e9; }
+  .btn.secondary { background: white; color: var(--ibm-blue); border: 1px solid var(--ibm-blue); }
+  .btn.export { background: white; color: var(--ibm-gray-70); border: 1px solid var(--ibm-gray-30); display: inline-flex; align-items: center; gap: 6px; }
+  .btn.export:hover { background: var(--ibm-gray-10); color: var(--ibm-dark); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #resourceTable { table-layout: fixed; min-width: 1100px; }
+  thead th {
+    text-align: left; padding: 10px 10px; background: var(--ibm-gray-10); border-bottom: 2px solid var(--ibm-gray-30);
+    cursor: pointer; user-select: none; position: sticky; top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  thead th:not([data-key]) { cursor: default; }
+  thead th:hover { background: var(--ibm-gray-20); }
+  thead th .sort-arrow { font-size: 10px; margin-left: 4px; color: var(--ibm-gray-60); }
+  tbody tr { border-bottom: 1px solid var(--ibm-gray-20); }
+  tbody tr:hover { background: var(--blue-bg); }
+  tbody tr.expandable { cursor: pointer; }
+  td { padding: 9px 10px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.wrap { white-space: normal; }
+  .col-name { width: 17%; }
+  .col-status { width: 7%; }
+  .col-env { width: 11%; }
+  .col-ip { width: 13%; }
+  .col-os { width: 8%; }
+  .col-cores { width: 6%; }
+  .col-mem { width: 7%; }
+  .col-cat { width: 10%; }
+  .col-type { width: 8%; }
+  .col-loc { width: 8%; }
+  .col-prod { width: 13%; }
+  .col-expand { width: 22px; }
+  .detail-row td { background: #fafafa; padding: 14px 20px; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 20px; }
+  .detail-item .d-label { font-size: 11px; color: var(--ibm-gray-70); text-transform: uppercase; letter-spacing: 0.3px; }
+  .detail-item .d-value { font-size: 13px; margin-top: 2px; font-weight: 500; }
+
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge-active { background: var(--green-bg); color: var(--green); }
+  .badge-warning { background: var(--yellow-bg); color: var(--yellow); }
+  .badge-error, .badge-stale, .badge-inactive { background: var(--red-bg); color: var(--red); }
+  .badge-neutral { background: var(--ibm-gray-20); color: var(--ibm-gray-70); }
+
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 3px; background: var(--ibm-gray-20); color: var(--ibm-gray-70); font-size: 11px; margin-right: 4px;}
+  .pill-btn {
+    padding: 6px 14px; border-radius: 16px; border: 1px solid var(--ibm-gray-30); background: white;
+    cursor: pointer; font-size: 12px; margin: 3px;
+  }
+  .pill-btn.active-pill { background: var(--ibm-blue); color: white; border-color: var(--ibm-blue); }
+
+  .expand-icon { display: inline-block; width: 14px; transition: transform 0.15s; color: var(--ibm-gray-60); }
+  .expand-icon.open { transform: rotate(90deg); }
+
+  footer { text-align: center; color: var(--ibm-gray-60); font-size: 12px; padding: 30px 0 10px; }
+
+  .section-title { font-size: 16px; font-weight: 600; margin: 24px 0 10px; }
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .ocp-card { background: white; border: 1px solid var(--ibm-gray-20); border-radius: 4px; padding: 16px; }
+  .ocp-card h3 { margin: 0 0 8px; font-size: 15px; }
+  .ocp-card .ocp-meta { font-size: 12px; color: var(--ibm-gray-70); margin-bottom: 8px; }
+  .ocp-card .ocp-stats { display: flex; gap: 16px; }
+  .ocp-stat-val { font-size: 20px; font-weight: 600; }
+  .ocp-stat-label { font-size: 11px; color: var(--ibm-gray-70); text-transform: uppercase; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--ibm-gray-60); }
+
+  .section-subtitle { font-size: 14px; font-weight: 600; margin: 22px 0 10px; color: var(--ibm-dark); }
+  .action-summary-row { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+  .action-summary-row .kpi-card { min-width: 140px; }
+  .badge-stale { background: var(--yellow-bg); color: var(--yellow); }
+</style>
+</head>
+<body>
+<header>
+  <h1>IBM Power Systems — Environment Management Tool</h1>
+  <div class="subtitle">Account: 2330274 — GBS c/o Schiphol · Data snapshot: October 23, 2026 · Combines IBM Cloud resource list, Power Virtual Server workspace details, Red Hat OpenShift Console data, and FRA05 LPAR/host inventory</div>
+</header>
+<div class="container">
